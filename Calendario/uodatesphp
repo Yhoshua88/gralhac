@@ -1,0 +1,285 @@
+<?php
+
+header('Content-type: text/html; charset=utf-8');
+class Uodates {
+    public $default_module = 'Home';
+    public $default_action = 'index';
+    private $mod;
+    private $db;
+    public function __construct($db_host, $db_user, $db_password, $db_name) {   
+        // Crear conexión
+        $this->db = new mysqli($db_host, $db_user, $db_password, $db_name);
+        $this->db->set_charset("utf8");
+        // Verificar conexión
+        if ($this->db->connect_error) {
+            die("Error de conexión a la base de datos: " . $this->db->connect_error);
+        }
+    }
+    
+public function uc_latin1 ($str) {
+    define("LATIN1_UC_CHARS", "ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝ");
+    define("LATIN1_LC_CHARS", "àáâãäåæçèéêëìíîïðñòóôõöøùúûüý");
+    $str = strtoupper(strtr($str, LATIN1_LC_CHARS, LATIN1_UC_CHARS));
+    return strtr($str, array("ß" => "SS"));
+}
+public function mome(){
+    $responde['responde']='0';
+    $responde['msgtitle']='Error';
+    $responde['msgtxt']="No se elimino la mome ";
+    return $responde;
+}
+    public function reservas($ano, $mes){
+        $stmt = $this->db->prepare('SELECT inicio, fin, ano,mes,dia,lugar,id as jidi FROM reserva WHERE mes = ? and ano = ? and estatus="A" ORDER BY inicio ASC');
+        $mes=str_pad($mes, 2,"0", STR_PAD_LEFT);
+        $stmt->bind_param('ss', $mes, $ano);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        while ($row = $result->fetch_assoc()) {
+            $quirofanos[$row['lugar']][str_pad($row['dia'], 2,"0", STR_PAD_LEFT)][substr($row['inicio'], 11, -3)]=$row;
+        }
+        $stmt = $this->db->prepare('SELECT lugar FROM reserva WHERE mes = ? and ano = ? and estatus="A" group BY lugar');
+        $mes=str_pad($mes, 2,"0", STR_PAD_LEFT);
+        $stmt->bind_param('ss', $mes, $ano);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        /*$result = $result->fetch_assoc();
+        print_r($result);*/
+        $i=0;
+        while ($row = $result->fetch_assoc()) {
+            $mome[$i]=$row['lugar'];
+            $i++;
+        }
+        $quirofanos['salas']=$mome;
+        $quirofanos['salascantidad']=$i;
+        return $quirofanos;
+    }
+    public function utf8_string_array_encode(&$array){
+        $func = function(&$value,&$key){
+            if(is_string($value)){
+                $value = utf8_encode($value);
+            } 
+            if(is_string($key)){
+                $key = utf8_encode($key);
+            }
+            if(is_array($value)){
+                utf8_string_array_encode($value);
+            }
+        };
+        array_walk($array,$func);
+        return $array;
+    }
+    public function redonHoras($horaIni,$tip,$ho){
+        $result='';
+        switch ($tip){
+            case 'i':
+                    $hora=date('Y-m-d H', strtotime($horaIni)).':00:00';
+                    $min=date('i', strtotime($horaIni))/10;
+                    $min=(round($min, 0, PHP_ROUND_HALF_UP))*10;
+                    $cam='+ '.$min.' minute';
+                    $result=date('Y-m-d H:i', strtotime($hora . $cam));
+                break;
+            case 'H':
+                    $hora=date('Y-m-d H:i', strtotime($horaIni)).':00';
+                    if(date('i', strtotime($horaIni))>=30){
+                        $min=60-date('i', strtotime($horaIni));
+                        $cam='+ '.$min.' minute';
+                    }else{
+                        $min=date('i', strtotime($horaIni));
+                        $cam='- '.$min.' minute';
+                    }
+                    $result=date('Y-m-d H:i', strtotime($hora . $cam));
+                    //$result=$min;
+                break;
+            case 'P':
+                $result=date('Y-m-d H:i', strtotime($horaIni . ' +'.$ho));
+        }
+        return $result;
+    }
+    public function zero($jidi){
+        $stmt=$this->db->prepare('SELECT inicio,fin, lugar ,ano,mes,dia,id as jidi FROM reserva WHERE id=?');
+        $stmt->bind_param('s', $jidi);
+        $stmt->execute();
+        $stmt->bind_result($inicio, $fin,$lugar,$ano,$mes,$dia,$jidi);
+        $zero='0000-00-00 00:00:00';
+        while ($stmt->fetch()) {$inicio;$fin;$lugar;$ano;$mes;$dia;$jidi;}
+        $result['inicio']=$inicio;
+        $result['fin']=$fin;
+        $result['jidi']=$jidi;
+        $result['lugar']=$lugar;
+        $result['ano']=$ano;
+        $result['mes']=$mes;
+        $result['dia']=$dia;
+        $stmt=$this->db->prepare('UPDATE `reserva` SET `inicio`= ?, `fin` = ? WHERE id = ?');
+        $stmt->bind_param('sss', $zero,$zero,$jidi);
+        $stmt->execute();
+        $result['flag'] = '0';
+        return $result;
+    }
+    public function bloq ($inicio, $fin, $lugar){
+        if($inicio==''||$fin==''||$lugar==''){
+            $responde['responde']='2';
+            $responde['msgtitle']='Error';
+            $responde['msgtxt']="Falta algún dato agregado";
+            $responde['flag']='1';
+            return $responde;
+        }
+        if(strtotime($inicio)==strtotime($fin)){
+            $responde['responde']='2';
+            $responde['msgtitle']='Error';
+            $responde['msgtxt']="Las fechas son iguales";
+            $responde['flag']='1';
+            return $responde;
+        }
+        if(strtotime($fin)<strtotime($inicio)){
+            $responde['responde']='2';
+            $responde['msgtitle']='Error';
+            $responde['msgtxt']="La fecha de inicio es mayor a la inicial";
+            $responde['flag']='1';
+            return $responde;
+        }
+        if(strtotime($fin)>=strtotime($inicio . ' +1 day')){
+            $responde['responde']='2';
+            $responde['msgtitle']='Error';
+            $responde['msgtxt']="No puede reservar más de 24 hrs";
+            $responde['flag']='1';
+            return $responde;
+        }
+        if(strtotime(date('Y-m-d H:i',strtotime($fin)))>=strtotime(date('Y-m-d H:i',strtotime($inicio . ' +1 day')))){
+            $responde['responde']='2';
+            $responde['msgtitle']='Error';
+            $responde['msgtxt']=$fin.'>='.$inicio;
+            $responde['flag']='1';
+            return $responde;
+        }
+            /******************************************************************************************************************** */
+            /**             Se crea una consulta para ver las reservas guardadas                                                 **/
+            $stmt = $this->db->prepare('SELECT id, inicio FROM reserva WHERE lugar = ? AND (? < fin AND ? > inicio) AND estatus="A"');
+            $stmt->bind_param('sss', $lugar,$inicio,$fin);
+            $stmt->execute();
+            $stmt->store_result();
+            $result = $stmt->num_rows;
+            if ($result >= '1') {
+                $responde['responde']='2';
+                $responde['msgtitle']='Error';
+                $responde['msgtxt']='La fecha seleccionada tiene  '.$result.' fechas ocupadas';
+                $responde['flag']='1';
+                return $responde;
+            } else {
+                $responde['flag']='0';
+                $responde['msgtxt']='(>_<)-'.$result;
+                return $responde;
+            }
+            /******************************************************************************************************************** */
+        $responde['flag']='1';
+        $stmt=null;
+        return $responde;
+    }
+    public function cancela($jidi){
+        $stmt = $this->db->prepare('UPDATE `reserva` SET `estatus`="C" WHERE id=?');
+        $stmt->bind_param('s', $jidi);
+        $stmt->execute();
+		$result = $stmt->affected_rows;
+		$stmt=null;
+        return $result;
+    }
+    public function update($inicio, $fin, $lugar, $ano, $mes, $dia,$jidi){
+        $stmt=$this->db->prepare('UPDATE reserva SET inicio = ?, fin = ?, lugar = ?, ano = ?,mes = ?,dia = ? WHERE id = ?');
+        $inicio=$this->redonHoras($inicio,'i','');
+        $fin=$this->redonHoras($fin,'i','');
+        $stmt->bind_param('sssssss',$inicio, $fin, $lugar, $ano, $mes, $dia,$jidi);
+        $stmt->execute();
+		$result['flag'] = $stmt->affected_rows;
+        if($result['flag']>=0){
+            $result['responde']="1";
+            $result['msgtitle']='Reserva Guardada';
+            $result['msgtxt']='Se guardo correctamente la reserva';
+        }else{
+            $result['msgtitle']='Error';
+            $result['msgtxt']='No se cargo la reserva';
+        }
+        return $result;
+
+    }
+    public function inser($inicio, $fin, $lugar,$ano,$mes,$dia){
+		$stmt = $this->db->prepare('INSERT INTO `reserva`(inicio, fin, lugar,ano,mes,dia) VALUES (?,?,?,?,?,?)');
+		$inicio=$this->redonHoras($inicio,'i','');
+        $fin=$this->redonHoras($fin,'i','');
+        $stmt->bind_param('ssssss', $inicio,$fin,$lugar,$ano,$mes,$dia);
+        $stmt->execute();
+		$result['flag'] = $stmt->affected_rows;
+        if($result['flag']>=0){
+            $result['responde']='1';
+            $result['msgtitle']='Reserva -Guardada';
+            $result['msgtxt']='Se guardo correctamente la reserva';
+            return $result;
+        }else{
+            $result['msgtitle']='Error';
+            $result['msgtxt']='No se cargo la reserva';
+            return $result;
+        }
+        $stmt=null;
+		return $result;
+    }
+    public function __destruct() {
+        if ($this->db) {
+            $this->db->close();
+        }
+    }
+}
+
+$op=isset($_GET['op'])?$_GET['op']:'';
+if($op!=''){
+    $inicio=isset($_POST['inicio'])?$_POST['inicio']:'';
+    $fin=isset($_POST['fin'])?$_POST['fin']:'';
+    $lugar=isset($_POST['lugar'])?$_POST['lugar']:'';
+    $jidi=isset($_POST['jidi'])?$_POST['jidi']:'';
+    $ano=date('Y',strtotime($inicio));
+    $mes=date('m',strtotime($inicio));
+    $dia=date('d',strtotime($inicio));
+    $responde['responde']='0';
+    $responde['msgtitle']='Error falla default';
+    $responde['msgtxt']='Falta algun tipo de dato';
+    $uodates = new Uodates('Servidor', 'Usuario', 'Password', 'DB');
+    switch($_GET['op']){
+        case 'elim':
+                $result=$uodates->cancela($jidi);
+                if($result>='1'){
+                    $responde['responde']='1';
+                    $responde['msgtitle']='Cancelada';
+                    $responde['msgtxt']="Su reserva fue cancelada ";
+                }else{
+                    $responde['responde']='0';
+                    $responde['msgtitle']='Error';
+                    $responde['msgtxt']="No se elimino la reserva ";
+                }
+            break;
+        case 'camb':
+                
+                if($jidi!=''){
+                    $uodates->zero($jidi);
+                    $responde=$uodates->bloq($inicio,$fin,$lugar,$ano,$mes,$dia);
+                    if($responde['flag']>="1"){
+                        $uodates->update($result['inicio'],$result['fin'],$result['lugar'],$result['ano'],$result['mes'],$result['dia'],$result['jidi']);
+                        $responde['responde']='0';
+                        $responde['msgtitle']='Error';
+                        break;
+                    }
+                    $responde=$uodates->update($inicio,$fin,$lugar,$ano,$mes,$dia,$jidi);
+                }else{
+                    $responde=$uodates->bloq($inicio,$fin,$lugar);
+                    if($responde['flag']!="0"){
+                            break;
+                    }
+                    $responde=$uodates->inser($inicio, $fin, $lugar,$ano,$mes,$dia);
+                }
+            break;
+        case 'inse':
+                $responde=$uodates->mome();
+            break;
+        default:
+            $op='';
+    }
+    echo json_encode($responde);
+    $uodates = null;
+}
+?>
