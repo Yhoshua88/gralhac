@@ -24,7 +24,7 @@ ini_set('display_errors', '1');
 /* */
 include_once('uodates.php');
 try {
-        $uodates = new Uodates('localhost', 'root', 'ChanoJuano8', 'hachis');
+        $uodates = new Uodates('Servidor', 'Usuario', 'Password', 'DB');
         $fechas[]='';
         $modulo = (isset($_GET['modulo']))? $_GET['modulo'] : 'reservanew';
         $accion = (isset($_GET['accion']))? $_GET['accion'] : 'index';
